@@ -120,3 +120,29 @@ def test_ema_algorithm(params, model_cls, minimal_state, empty_logger):
     # Check if the training model is swapped back in for training
     algorithm.apply(Event.EVAL_END, state, empty_logger)
     validate_model(state.model, training_updated_model)
+
+
+def test_legacy_state_dict_requires_initialized_ema_model():
+    """Pre-0.13.0 state dicts must raise if ema_model is not initialized.
+
+    The compatibility rewrite used to construct a ValueError without raising it
+    (#3946), then mutate the incoming state into an empty new-format dict.
+    """
+    algorithm = EMA(half_life='1000ba', update_interval='1ba')
+    assert algorithm.ema_model is None
+    legacy_state = {
+        'training_model': {},
+        'ema_model': {},
+        'ema_weights_active': False,
+    }
+    with pytest.raises(ValueError, match='ema_model must be initialized'):
+        algorithm.ensure_compatible_state_dict(legacy_state)
+    # The failed conversion must not drop training_model from the input state.
+    assert 'training_model' in legacy_state
+
+    with pytest.raises(ValueError, match='ema_model must be initialized'):
+        algorithm.load_state_dict({
+            'training_model': {},
+            'ema_model': {},
+            'ema_weights_active': False,
+        })
